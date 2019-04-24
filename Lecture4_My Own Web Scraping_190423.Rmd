@@ -1,0 +1,134 @@
+---
+title: "My first Web_Scraping with R"
+author: "SeongJin Kim"
+date: "`r paste(Sys.Date(),weekdays(Sys.Date()))`"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+---
+
+output: html_document
+
+output: 
+  pdf_document:
+    latex_engine: xelatex
+mainfont: NanumGothic
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r introduction, echo=FALSE}
+# --------------------------------------------------------------------------------
+# 네이버 KOSPI Data
+# --------------------------------------------------------------------------------
+cat(" --------------------------------------------------------------------------------","\n",
+  paste(Sys.Date(), weekdays(Sys.Date()),"의 KOSPI 주식 정보를 가져 옵니다", sep=""),"\n",
+  "--------------------------------------------------------------------------------","\n"
+)
+```
+
+```{r import pacakges, message=FALSE, warning=FALSE}
+# 필요한 패키지를 불러옵니다. 
+library(tidyverse)
+library(httr)
+library(rvest)
+library(readr)
+```
+
+```{r request HTTP file, warning=FALSE}
+# 네이버 증권 KOSPI 페이지 상단의 표 수집합니다.
+# https://finance.naver.com/sise/sise_index.nhn?code=KOSPI
+
+# HTTP 요청을 실행합니다. 
+res <- GET(url = 'https://finance.naver.com/sise/sise_index.nhn?code=KOSPI')
+```
+
+```{r check html file, warning=FALSE}
+# html 확인
+status_code(x = res) ##[1] 200 : 정상
+readr::guess_encoding(file="C:/Users/iihsk/Desktop/ds_web scraping/Sisa web scraping/코스피 _ 네이버 금융.html")
+#cat(content(x = res, as = 'text', encoding = 'EUC-KR'))
+
+# 응답 결과를 확인합니다. 
+#print(x = res)
+```
+
+
+```{r set locale, message=FALSE}
+# 윈도우 운영체제를 사용하고 있기 때문에 locale을 바꿔줍니다
+Sys.setlocale(category = 'LC_ALL', locale = 'C')
+```
+
+```{r scrape the neccessary part}
+# 페이지 상단의 표를 추출합니다.
+tableContents <- res %>% 
+  read_html(encoding='EUC-KR') %>%
+  html_nodes(css = '#contentarea_left > div.box_top_sub > div > div.subtop_sise_detail > table') %>% 
+  html_table(trim = TRUE)
+
+# 복사해 온 부분을 확인합니다
+# print(x = tableContents)
+# glimpse(x = tableContents)
+dim(tableContents) # 4개 열에 관측값 4개씩 들어있습니다
+
+# 로케일을 원래 상태로 돌려줍니다
+Sys.setlocale(category = 'LC_ALL', locale = 'korean')
+```
+
+```{r preprocssing part1, warning=FALSE}
+# 지저분한 표 형식을 처리합니다
+data <- tableContents[[1]] # list가 담고 있는 data frame을 가져옵니다
+glimpse(data)
+
+# 1단계 : 1~2열과 3~4열이 별개의 자료를 가졌다. tidy data 형식이 아니기 때문에 2열씩 분리한다
+part1 <- data[,1:2];part2 <- data[,3:4]
+colnames(part1) <- c("항목","값");colnames(part2) <- c("항목","값") # rbind하기 위해 열이름 동기화
+
+data <- rbind(part1, part2) # 데이터 통합
+data <- data[-dim(data)[1],] # 필요없는 첫째열 제거
+
+# 정규표현식 사용
+# 후보 : data[,"값"] <- data$값 %>% str_remove_all(pattern = '\n\t| ')
+print(data[4,2]) # \n\t와 공백으로 자료구 구분돼 있다
+x <- data[4,2]  %>% str_split(pattern = '\n\t ') # pattern을 기준으로 자료를 분할한다
+print(x)
+```
+
+data[4,2]에 저장돼 있는 지저분한 꼴을 4개 항목으로 따로 저장하려는 작업입니다.
+
+```{r preprocessing part2, warning=FALSE}
+# 데이터 앞 공백을 삭제해서 별도의 변수 separate.data에 집어 넣는다
+separate.data <- c()
+for(i in 1:length(x[[1]])){
+  separate.data[i] <- x[[1]][i] %>% str_trim() 
+}
+
+# 데이터 앞 5글자를 '항목명'으로 삼아 content에 집어 넣는다
+content <- c()
+for(i in 1:5){
+  content[i] <- separate.data[i] %>% str_sub(start=1, end=5)
+}
+
+# '항목명' 뒤로 나오는 글자들을 '값'으로 삼아 value에 집어 넣는다
+value <- c()
+for(i in 1:5){
+  value[i] <- separate.data[i] %>% str_sub(start=6, end=nchar(separate.data[i]))
+}
+
+# '항목명'과 '값'을 하나의 데이터로 통합한다
+partial.data <- cbind(content, value)
+print(partial.data)
+```
+
+```{r preprocessing part3, warning=FALSE}
+# 데이터 합치기
+data <- data[-4,]
+colnames(partial.data) <- colnames(data)
+data <- rbind(data, partial.data)
+print(data)
+
+# 데이터 저장
+write.csv(data, "20190423 KOSPI.csv", row.names=FALSE)
+```

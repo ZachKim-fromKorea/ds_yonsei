@@ -1,0 +1,181 @@
+---
+title: "Regression analysis on Windchill data"
+author: "SeongJin Kim"
+date: "`r paste(Sys.Date(),weekdays(Sys.Date()))`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r set working directory, message=FALSE}
+# Set working directory
+working.directory <- "C:/Users/iihsk/Desktop/SeongJin Kim/1. Yonsei University/8. 2019 SPRING/1. 통계자료분석/Assignment1"
+setwd(working.directory)
+```
+```{r import package, message=FALSE}
+# import package
+r = getOption("repos")
+r["CRAN"] = "http://cran.seoul.go.kr"
+options(repos = r)
+rm(r)
+
+if(!require(tidyverse)){
+	install.packages("tidyverse")
+	cat("install tidyverse","\n")
+	library(tidyverse)
+	cat("import tidyverse","\n")
+	}else{
+		library(tidyverse)
+		cat("import tidyverse","\n")
+}
+```
+
+```{r import data, warning=FALSE}
+# import data
+data <- read.csv("Table6-18.csv", header=TRUE, as.is=TRUE)
+str(data)
+glimpse(data)
+```
+
+```{r measure skewness, warning=FALSE}
+attach(data)
+# measure skewness
+fn.W <- fivenum(W)
+skewness.W<-((fn.W[4]-fn.W[3])-(fn.W[3]-fn.W[2]))/((fn.W[4]-fn.W[3])+(fn.W[3]-fn.W[2]))
+fn.V <- fivenum(V)
+skewness.V<-((fn.V[4]-fn.V[3])-(fn.V[3]-fn.V[2]))/((fn.V[4]-fn.V[3])+(fn.V[3]-fn.V[2]))
+fn.Temp <- fivenum(Temp)
+skewness.Temp<-((fn.Temp[4]-fn.Temp[3])-(fn.Temp[3]-fn.Temp[2]))/((fn.Temp[4]-fn.Temp[3])+(fn.Temp[3]-fn.Temp[2]))
+```
+
+
+```{r Draw Histogram for each variable, warning=FALSE}
+# Draw Histogram for each variable
+hist(W, sub=paste("Skewness =", skewness.W)) #slightly left skewed
+par(mfrow=c(1,2))
+hist(V, sub=paste("Skewness =", skewness.V))
+hist(Temp, sub=paste("Skewness =", skewness.Temp))
+```
+
+```{r Draw boxplot for each variable, warning=FALSE}
+# Draw boxplot for each variables
+attach(data)
+boxplot(W, main="Boxplot of W", sub=paste("mean =", mean(W), ", sd =", sd(W), ", Skewness =", skewness.W)) #slightly left skewed
+legend("bottomright", c(paste(".25 quartile =", fivenum(W)[2]), paste("median =",fivenum(W)[3]),paste(".75 quartile =", fivenum(W)[4])), col=rep(1,3), lwd=c(1,3,1))
+par(mfrow=c(1,2))
+boxplot(V, main="Boxplot of V", sub=paste("Skewness =", skewness.V))
+legend("bottomright", c(paste(".25 quartile =", fivenum(V)[2]), paste("median =",fivenum(V)[3]),paste(".75 quartile =", fivenum(V)[4])), col=rep(1,3), lwd=c(1,3,1))
+boxplot(Temp, main="Boxplot of Temp", sub=paste("Skewness =", skewness.Temp))
+legend("bottomright", c(paste(".25 quartile =", fivenum(Temp)[2]), paste("median =",fivenum(Temp)[3]),paste(".75 quartile =", fivenum(Temp)[4])), col=rep(1,3), lwd=c(1,3,1))
+```
+
+```{r Draw Scatter plot for each variable, warning=FALSE}
+# Scatter plot with Y
+par(mfrow=c(1,2))
+plot(W~V)
+plot(W~Temp)
+abline(coef(line(W~Temp)),col=2, lty=2)
+```
+
+```{r Interaction effect}
+# interaction effect
+VtimesTemp <- V*Temp
+
+# draw qqnorm
+par(mfrow=c(1,2))
+hist(V*Temp)
+qqnorm(VtimesTemp)
+abline(-137.5,1077.876,col=3, lty=2, lwd=3)
+legend("bottomright", "mean=-137.5, sd=1077.876",col=3, lty=2, lwd=3)
+
+# theoretical distribution of VtimesTemp mean = -137.5, sd = 1077.876
+# normal.random <- dnorm(seq(0,1,length = length(VtimesTemp)), -137.5, 1077.876)
+
+# there's gotta be some way to distinguish between the curves
+# (1) VtimesTemp <0 : Temp <0 (V is always >0)
+# (2) layered curves : come up with a way to seperate the curves
+
+# seperate data with V>0|Temp>0
+#positive.data <- data[V>0|Temp>0,]
+```
+```{r Scatter Plot Between windchill and V times Temp}
+# scatter plot between windchill vs V times Temp
+par(mfrow=c(1,2))
+hist(V*Temp)
+plot(W~VtimesTemp, main="Scatter Plot : W vs V*Temp")
+abline(v=0, col=2, lty=2)
+abline(h=0, col=2, lty=2)
+```
+```{r Contruct Linear model step by step}
+# construct linear model step by step_Temp
+lm.fit1 <- lm(W~Temp)
+residual1 <- resid(lm.fit1)
+# diagnosis
+par(mfrow=c(2,2))
+plot(lm.fit1)
+```
+```{r fit the residual with wind velocity}
+# fit the residual with wind velocity
+plot(residual1~V, main="Scatter plot btw residual and wind velocity", cor(residual1,V))
+abline(coef(line(residual1~V)), col=3, lty=3, lwd=2)
+legend("topright", "Regression Line", col=3, lty=3, lwd=2)
+
+# final regression curve
+lm.fit1.1 <- lm(residual1~V)
+residual2 <- resid(lm.fit1.1)
+```
+
+```{r fit the residual with interaction effect}
+# fit the residual with interaction effect
+plot(residual2~VtimesTemp, main="Scatter Plot : W vs V*Temp^2",sub= "- Heteroscedasity")
+abline(coef(line(residual2~VtimesTemp)), col=3, lty=3, lwd=3)
+legend("topright", "Regression Line", col=3, lty=3, lwd=2)
+
+plot(W~VtimesTemp)
+abline(h=0, col=2, lty=2)
+abline(v=0, col=2, lty=2)
+train <- cbind(data, VtimesTemp)
+train[,"Temp"] <- as.factor(train[,"Temp"])
+ggplot(data = train, aes(x = VtimesTemp, y = W)) +
+  geom_point(aes(col=Temp), size=3)
+```
+```{r measure the effect of velocity as category}
+# measure the effect of velocity as category
+train[,"V"] <- as.factor(train[,"V"])
+ggplot(data = train, aes(x = VtimesTemp, y = W)) +
+  geom_point(aes(col=V), size=3)
+# linear relationship between temperature and windchill has been detected
+```
+```{r inspect the marginal effect of temperature to windchill}
+# inspect marginal effect of temperature to windchill
+unique.velocity <- unique(V)
+par(mfrow=c(4,3))
+for(i in 1:length(unique.velocity)){
+    temporary.data <- data[V==unique.velocity[i],]
+    plot(temporary.data$W/temporary.data$V~temporary.data$Temp, main =paste("Marginal Effect of Temperature(V=",unique.velocity[i],")"))
+}
+# marginal effect of temperature to windchill is perfectly linear
+```
+```{r final regression model}
+# final regression model
+data <- data %>% mutate(factor.V = as.factor(V))
+lm.fit3 <- lm(W ~ V + Temp + factor.V*Temp, data=data)
+par(mfrow=c(2,2))
+plot(lm.fit3)
+```
+
+```{r mean squared Error, warning=FALSE}
+summary.lmfit <- summary(lm.fit3)
+fitted.W <- fitted(lm.fit3)
+MSE <- sum((W-fitted.W)^2)/(dim(data)[1]-1)
+cat("MSE =",MSE, "\n")
+```
+
+```{r histogram of true W and fitted W}
+hist(W, col=rgb(0,0,1,0.6), main="Histogram between True W an Fitted W",
+     sub = paste("R-squared =",summary.lmfit$r.squared, ", MSE =", MSE))
+legend("topright", c("True W", "Fitted W"), col=c(rgb(0,0,1,0.6), rgb(0,1,0,0.6)), lwd=10)
+hist(fitted.W, col=rgb(0,1,0,0.6), add=T)
+```
